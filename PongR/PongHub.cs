@@ -18,7 +18,8 @@ namespace PongR
 
 		public void Leave()
 		{
-			if (!Players.TryGetValue(this.Context.ConnectionId, out Player player)) return;
+			Player player;
+			if (!Players.TryGetValue(this.Context.ConnectionId, out player)) return;
 
 			Players.Remove(this.Context.ConnectionId);
 
@@ -40,7 +41,8 @@ namespace PongR
 
 		public string Join()
 		{
-			if (!Players.TryGetValue(this.Context.ConnectionId, out Player player))
+			Player player;
+			if (!Players.TryGetValue(this.Context.ConnectionId, out player))
 			{
 				player = new Player
 				{
@@ -75,8 +77,8 @@ namespace PongR
 
 		public void FireBall()
 		{
-			if (!Players.TryGetValue(this.Context.ConnectionId, out Player player)) return;
-
+			Player player;
+			if (!Players.TryGetValue(this.Context.ConnectionId, out player)) return;
 			if (player.Game == null) return;
 
 			player.Game.FireBall(player);
@@ -84,8 +86,8 @@ namespace PongR
 
 		public void MissedBall()
 		{
-			if (!Players.TryGetValue(this.Context.ConnectionId, out Player player)) return;
-
+			Player player;
+			if (!Players.TryGetValue(this.Context.ConnectionId, out player)) return;
 			if (player.Game == null) return;
 
 			player.Game.MissedBall(player);
@@ -93,7 +95,8 @@ namespace PongR
 
 		public void SendPadPosition(double y)
 		{
-			if (!Players.TryGetValue(this.Context.ConnectionId, out Player player)) return;
+			Player player;
+			if (!Players.TryGetValue(this.Context.ConnectionId, out player)) return;
 
 			player.Pad.Y = y;
 
