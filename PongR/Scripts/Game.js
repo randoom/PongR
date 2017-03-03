@@ -109,11 +109,10 @@
 				game.keysDown[e.keyCode] = false;
 			};
 
-			$(window).unload(function () {
-				hub.leave();
-				console.log("leave");
-			});
-
+			window.onbeforeunload = function () {
+				hub.stop();
+			}
+			
 			this.lastFrameTime = +new Date;
 			this.gameLoop();
 		};
