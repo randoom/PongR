@@ -1,0 +1,12 @@
+{
+  "name": "threejs-spike",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "dependencies": {
+    "@types/three": "^0.84.2"
+  },
+  "devDependencies": {},
+  "author": "Catalin DICU",
+  "license": "ISC"
+}

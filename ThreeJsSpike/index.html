@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<!-- The previous line tells the browser, that the page uses the HTML5 standard. -->
+
+<html>
+<head>
+    <title>Three.js tutorial - Lesson 04</title>
+    <meta http-equiv="content-type" content="text/html; charset=utf-8">
+
+    <meta name="viewport" content="width=device-width, height=device-height, initial-scale=1">
+    <style type="text/css">
+        body {
+            background-color: #000000;
+            overflow: hidden;
+            padding:0;
+            margin:0;
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/84/three.js"></script>
+    <script src="out/index.js"></script>
+</head>
+<body>
+<div id="webGL"></div>
+<script>
+    var gameWorld = new GameWorld();
+    
+    var el = gameWorld.initializeScene(window.innerWidth, window.innerHeight);
+    document.getElementById("webGL").appendChild(el);
+
+    gameWorld.animateScene();
+</script>
+</body>
+</html>
