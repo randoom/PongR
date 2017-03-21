@@ -5,19 +5,40 @@ class GameWorld {
     private static readonly fieldWidth = 6;
     private static readonly fieldHeight = 5;
     private static readonly fieldDepth = 20.2;
-    private static readonly ballR = 0.1;
+    private static readonly ballRadius = 0.1;
+
+    private physics: CANNON.World;
 
     private renderer: THREE.WebGLRenderer;
     private scene: THREE.Scene;
     private camera: THREE.PerspectiveCamera;
     private textureloader: THREE.TextureLoader;
 
-    private pad1: THREE.Mesh;
-    private pad2: THREE.Mesh;
-    private ball: DynamicMesh;
+    private pad1: WorldObject;
+    private pad2: WorldObject;
+    private ball: WorldObject;
     private padPosition: THREE.Vector3;
 
+    private fieldMaterial = new CANNON.Material("field");
+    private ballMaterial = new CANNON.Material("ball");
+    private padMaterial = new CANNON.Material("pad");
+
+    constructor(){
+        this.ballMaterial.friction = 1;
+        this.ballMaterial.restitution = 1;
+        this.fieldMaterial.friction = 1;
+        this.fieldMaterial.restitution = 1;
+        this.padMaterial.friction = 1;
+        this.padMaterial.restitution = 1;
+    }
+
     public initializeScene(canvasWidth: number, canvasHeight: number): HTMLElement {
+
+        this.physics = new CANNON.World();
+        //this.physics.gravity.set(0, 0, 0);
+        this.physics.broadphase = new CANNON.NaiveBroadphase();
+        this.physics.solver.iterations = 10;
+
         this.renderer = new THREE.WebGLRenderer({ antialias: true, precision: "highp" });
         this.renderer.setClearColor(0x000000, 1);
         this.renderer.setSize(canvasWidth, canvasHeight);
@@ -36,20 +57,16 @@ class GameWorld {
 
         this.addLights();
 
-        let field = this.createField();
-        this.scene.add(field);
+        this.ball = this.addBall();
+        this.ball.setPosition(0.0, 0.0, 0.0);
 
-        this.pad1 = this.createPad();
-        this.pad1.position.set(0.0, 0.0, 10.0);
-        this.scene.add(this.pad1);
+        this.addField();
 
-        this.pad2 = this.createPad();
-        this.pad2.position.set(0.0, 0.0, -10.0);
-        this.scene.add(this.pad2);
-
-        this.ball = this.createBall();
-        this.ball.position.set(0.0, 0.0, 0.0);
-        this.scene.add(this.ball);
+        this.pad1 = this.addPad();
+        this.pad1.setPosition(0.0, 0.0, 10.0);
+        
+        this.pad2 = this.addPad();
+        this.pad2.setPosition(0.0, 0.0, -10.0);
 
         window.addEventListener("mousemove", e => this.onMouseMove(e), false);
         window.addEventListener("resize", e => this.onResize(e), false);
@@ -57,27 +74,70 @@ class GameWorld {
         return this.renderer.domElement;
     }
 
-    private createField(): THREE.Mesh {
-        let geometry = new THREE.BoxGeometry(GameWorld.fieldWidth, GameWorld.fieldHeight, GameWorld.fieldDepth);
+    private addField(): void {
+        let planeBottom = this.addPlane(GameWorld.fieldWidth, GameWorld.fieldDepth);
+        planeBottom.body.position.set(0, -GameWorld.fieldHeight / 2, 0);
+        planeBottom.body.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2);
+        planeBottom.updateMesh();
 
-        // remove front and back quads
-        geometry.faces.splice(8, 4);
-        geometry.elementsNeedUpdate = true;
+        let planeTop = this.addPlane(GameWorld.fieldWidth, GameWorld.fieldDepth);
+        planeTop.body.position.set(0, GameWorld.fieldHeight / 2, 0);
+        planeTop.body.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), Math.PI / 2);
+        planeTop.updateMesh();
 
-        let material = new THREE.MeshStandardMaterial({
-            color: 0xaaffaa,
-            side: THREE.BackSide,
-            roughness: 1,
-            metalness: 0
-        });
+        let planeLeft = this.addPlane(GameWorld.fieldDepth, GameWorld.fieldHeight);
+        planeLeft.body.position.set(-GameWorld.fieldWidth / 2, 0, 0);
+        planeLeft.body.quaternion.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), Math.PI / 2);
+        planeLeft.updateMesh();
 
-        let mesh = new THREE.Mesh(geometry, material);
-        mesh.receiveShadow = true;
-        mesh.castShadow = false;
-        return mesh;
+        let planeRight = this.addPlane(GameWorld.fieldDepth, GameWorld.fieldHeight);
+        planeRight.body.position.set(GameWorld.fieldWidth / 2, 0, 0);
+        planeRight.body.quaternion.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), -Math.PI / 2);
+        planeRight.updateMesh();
+
+        let planeBack = this.addPlane(GameWorld.fieldWidth, GameWorld.fieldHeight, false);
+        planeBack.body.position.set(0, 0, -GameWorld.fieldDepth / 2);
+        // planeBack.body.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), 0);
+
+        /*
+        let planeFront = this.addPlane(GameWorld.fieldWidth, GameWorld.fieldHeight, false);
+        planeFront.body.position.set(0, 0, GameWorld.fieldDepth / 2);
+        planeFront.body.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), Math.PI);
+        */
     }
 
-    private createPad(): THREE.Mesh {
+    private addPlane(width: number, height: number, hasMesh: boolean = true): WorldObject {
+
+        let mesh = null;
+        if (hasMesh) {
+            let geometry = new THREE.PlaneGeometry(width, height);
+
+            let material = new THREE.MeshStandardMaterial({
+                color: 0xaaffaa,
+                roughness: 1,
+                metalness: 0,
+                transparent: true,
+                opacity: 0.80,
+            });
+
+            mesh = new THREE.Mesh(geometry, material);
+            mesh.receiveShadow = true;
+            mesh.castShadow = false;
+
+            this.scene.add(mesh);
+        }
+
+        let body = new CANNON.Body({
+            mass: 0
+        });
+        body.material = this.fieldMaterial;
+        body.addShape(new CANNON.Plane());
+        this.physics.addBody(body);
+
+        return new WorldObject(mesh, body);
+    }
+
+    private addPad(): WorldObject {
         let geometry = new THREE.BoxGeometry(GameWorld.padWidth, GameWorld.padHeight, GameWorld.padDepth);
         let material = new THREE.MeshStandardMaterial({
             color: 0x33ff77,
@@ -88,11 +148,21 @@ class GameWorld {
         });
         let mesh = new THREE.Mesh(geometry, material);
         mesh.castShadow = false;
-        return mesh;
+        this.scene.add(mesh);
+
+        let body = new CANNON.Body({
+            mass: 0
+        });
+        body.fixedRotation = true;
+        body.material = this.padMaterial;
+        body.addShape(new CANNON.Box(new CANNON.Vec3(GameWorld.padWidth/2, GameWorld.padHeight/2, GameWorld.padDepth/2)));
+        this.physics.addBody(body);
+
+        return new WorldObject(mesh, body);
     }
 
-    private createBall(): DynamicMesh {
-        let geometry = new THREE.SphereGeometry(GameWorld.ballR, 8);
+    private addBall(): WorldObject {
+        let geometry = new THREE.SphereGeometry(GameWorld.ballRadius, 8);
         let material = new THREE.MeshStandardMaterial({
             color: 0xffffff,
             roughness: 0.5,
@@ -106,12 +176,20 @@ class GameWorld {
             material.needsUpdate = true;
         });
 
-        let mesh: DynamicMesh = new THREE.Mesh(geometry, material);
+        let mesh: THREE.Mesh = new THREE.Mesh(geometry, material);
         mesh.castShadow = true;
+        this.scene.add(mesh);
 
-        mesh.speed = new THREE.Vector3(3, 3, 3);
+        let body = new CANNON.Body({
+            mass: 1,
+            velocity: new CANNON.Vec3(3, 3, 3)
+        });
+        //body.angularVelocity.set(5,5,5);
+        body.material = this.ballMaterial;
+        body.addShape(new CANNON.Sphere(GameWorld.ballRadius));
+        this.physics.addBody(body);
 
-        return mesh;
+        return new WorldObject(mesh, body);
     }
 
     private addLights(): void {
@@ -153,7 +231,7 @@ class GameWorld {
     }
 
     private onMouseMove(event: MouseEvent): void {
-        this.padPosition = this.screenToScene(event.offsetX, event.offsetY, window.innerWidth, window.innerHeight, this.pad1.position.z);
+        this.padPosition = this.screenToScene(event.offsetX, event.offsetY, window.innerWidth, window.innerHeight, this.pad1.mesh.position.z);
     }
 
     private onResize(event: UIEvent): void {
@@ -180,77 +258,21 @@ class GameWorld {
 
         this.updateScene(dt / 1000);
 
-        if (this.padPosition) {
-            this.pad1.position.x = this.centerClip(this.padPosition.x, GameWorld.fieldWidth - GameWorld.padWidth);
-            this.pad1.position.y = this.centerClip(this.padPosition.y, GameWorld.fieldHeight - GameWorld.padHeight);
-        }
-
         requestAnimationFrame((t: number) => this.animateScene(t));
 
         this.renderer.render(this.scene, this.camera);
     }
 
     private updateScene(dt: number): void {
-        this.updateBall(dt);
-    }
+        if (this.padPosition) {
+            let x = this.centerClip(this.padPosition.x, GameWorld.fieldWidth - GameWorld.padWidth);
+            let y = this.centerClip(this.padPosition.y, GameWorld.fieldHeight - GameWorld.padHeight);
 
-    private updateBall(dt: number): void {
-        this.ball.position.x += this.ball.speed.x * dt;
-        this.ball.position.y += this.ball.speed.y * dt;
-        this.ball.position.z += this.ball.speed.z * dt;
-
-        /*
-        if (this.ball.position.x <= minX) {
-            if (this.ball.position.y >= this.this.pad1.y && this.ball.position.y <= this.this.pad1.y + this.this.pad1.height) {
-                this.ball.position.x = 2 * minX - this.ball.position.x;
-                this.ball.speed.x = -this.ball.speed.x;
-            } else {
-                //this.pointStarted = false;
-                //hub.server.missedBall();
-            }
-        }
-    
-        if (this.ball.position.x >= maxX) {
-            if (this.ball.position.y >= this.this.pad2.y && this.ball.position.y <= this.this.pad2.y + this.this.pad2.height) {
-                this.ball.position.x = 2 * maxX - this.ball.position.x;
-                this.ball.speed.x = -this.ball.speed.x;
-            }
-        }
-        */
-
-        let minX = GameWorld.fieldWidth / 2 - GameWorld.ballR;
-        let minY = GameWorld.fieldHeight / 2 - GameWorld.ballR;
-        let minZ = GameWorld.fieldDepth / 2 - GameWorld.ballR;
-
-        if (this.ball.position.x <= -minX) {
-            this.ball.position.x = 2 * -minX - this.ball.position.x;
-            this.ball.speed.x = -this.ball.speed.x;
+            this.pad1.setPosition(x, y, this.pad1.mesh.position.z);
         }
 
-        if (this.ball.position.x >= minX) {
-            this.ball.position.x = 2 * minX - this.ball.position.x;
-            this.ball.speed.x = -this.ball.speed.x;
-        }
-
-        if (this.ball.position.y <= -minY) {
-            this.ball.position.y = 2 * -minY - this.ball.position.y;
-            this.ball.speed.y = -this.ball.speed.y;
-        }
-
-        if (this.ball.position.y >= minY) {
-            this.ball.position.y = 2 * minY - this.ball.position.y;
-            this.ball.speed.y = -this.ball.speed.y;
-        }
-
-        if (this.ball.position.z <= -minZ) {
-            this.ball.position.z = 2 * -minZ - this.ball.position.z;
-            this.ball.speed.z = -this.ball.speed.z;
-        }
-
-        if (this.ball.position.z >= minZ) {
-            this.ball.position.z = 2 * minZ - this.ball.position.z;
-            this.ball.speed.z = -this.ball.speed.z;
-        }
+        this.physics.step(dt);
+        this.ball.updateMesh();
     }
 
     private centerClip(val: number, len: number): number {
@@ -258,6 +280,24 @@ class GameWorld {
     }
 }
 
-class DynamicMesh extends THREE.Mesh {
-    public speed?: THREE.Vector3;
+class WorldObject {
+    public mesh: THREE.Mesh;
+    public body: CANNON.Body;
+
+    constructor(mesh: THREE.Mesh, body: CANNON.Body) {
+        this.mesh = mesh;
+        this.body = body;
+    }
+
+    public setPosition(x: number, y: number, z: number): void {
+        this.mesh.position.set(x, y, z);
+        this.body.position.set(x, y, z);
+    }
+
+    public updateMesh(): void {
+        if(this.mesh){
+            this.mesh.position.copy(<THREE.Vector3><{}>this.body.position);
+            this.mesh.quaternion.copy(<THREE.Quaternion><{}>this.body.quaternion);
+        }        
+    }
 }

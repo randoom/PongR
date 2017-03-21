@@ -4,6 +4,7 @@
   "description": "",
   "main": "index.js",
   "dependencies": {
+    "@types/cannon": "^0.1.0",
     "@types/three": "^0.84.2"
   },
   "devDependencies": {},
