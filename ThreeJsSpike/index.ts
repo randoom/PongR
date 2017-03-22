@@ -19,26 +19,32 @@ class GameWorld {
     private ball: WorldObject;
     private padPosition: THREE.Vector3;
 
+    private jointBody: CANNON.Body;
+    private mouseConstraint: CANNON.PointToPointConstraint;
+
     private fieldMaterial = new CANNON.Material("field");
     private ballMaterial = new CANNON.Material("ball");
     private padMaterial = new CANNON.Material("pad");
 
-    constructor(){
-        this.ballMaterial.friction = 1;
-        this.ballMaterial.restitution = 1;
-        this.fieldMaterial.friction = 1;
+    constructor() {
+        this.ballMaterial.friction = 0.5;
+        this.fieldMaterial.friction = 0.2;
+        this.padMaterial.friction = 1.0;
+
         this.fieldMaterial.restitution = 1;
-        this.padMaterial.friction = 1;
+        this.ballMaterial.restitution = 1;
         this.padMaterial.restitution = 1;
     }
 
     public initializeScene(canvasWidth: number, canvasHeight: number): HTMLElement {
 
         this.physics = new CANNON.World();
-        //this.physics.gravity.set(0, 0, 0);
+        // set gravity to workaround an issue where no friction is computed when gravity is 0
+        // see https://github.com/schteppe/cannon.js/issues/224
+        this.physics.gravity.set(0, -10, 0);
         this.physics.broadphase = new CANNON.NaiveBroadphase();
         this.physics.solver.iterations = 10;
-
+        
         this.renderer = new THREE.WebGLRenderer({ antialias: true, precision: "highp" });
         this.renderer.setClearColor(0x000000, 1);
         this.renderer.setSize(canvasWidth, canvasHeight);
@@ -64,7 +70,17 @@ class GameWorld {
 
         this.pad1 = this.addPad();
         this.pad1.setPosition(0.0, 0.0, 10.0);
-        
+
+        this.jointBody = new CANNON.Body({ mass: 0 });
+        this.jointBody.addShape(new CANNON.Sphere(0.1));
+        this.jointBody.collisionFilterGroup = 0;
+        this.jointBody.collisionFilterMask = 0;
+        this.jointBody.position.set(0.0, 0.0, 10.0);
+        this.physics.addBody(this.jointBody);
+
+        this.mouseConstraint = new CANNON.PointToPointConstraint(this.pad1.body, new CANNON.Vec3(0, 0, 0), this.jointBody, new CANNON.Vec3(0, 0, 0));
+        this.physics.addConstraint(this.mouseConstraint);
+
         this.pad2 = this.addPad();
         this.pad2.setPosition(0.0, 0.0, -10.0);
 
@@ -99,11 +115,9 @@ class GameWorld {
         planeBack.body.position.set(0, 0, -GameWorld.fieldDepth / 2);
         // planeBack.body.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), 0);
 
-        /*
         let planeFront = this.addPlane(GameWorld.fieldWidth, GameWorld.fieldHeight, false);
         planeFront.body.position.set(0, 0, GameWorld.fieldDepth / 2);
         planeFront.body.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), Math.PI);
-        */
     }
 
     private addPlane(width: number, height: number, hasMesh: boolean = true): WorldObject {
@@ -151,11 +165,11 @@ class GameWorld {
         this.scene.add(mesh);
 
         let body = new CANNON.Body({
-            mass: 0
+            mass: 10
         });
         body.fixedRotation = true;
         body.material = this.padMaterial;
-        body.addShape(new CANNON.Box(new CANNON.Vec3(GameWorld.padWidth/2, GameWorld.padHeight/2, GameWorld.padDepth/2)));
+        body.addShape(new CANNON.Box(new CANNON.Vec3(GameWorld.padWidth / 2, GameWorld.padHeight / 2, GameWorld.padDepth / 2)));
         this.physics.addBody(body);
 
         return new WorldObject(mesh, body);
@@ -182,9 +196,9 @@ class GameWorld {
 
         let body = new CANNON.Body({
             mass: 1,
-            velocity: new CANNON.Vec3(3, 3, 3)
+            velocity: new CANNON.Vec3(3, 0, 3)
         });
-        //body.angularVelocity.set(5,5,5);
+        body.angularVelocity.set(0, 10, 0);
         body.material = this.ballMaterial;
         body.addShape(new CANNON.Sphere(GameWorld.ballRadius));
         this.physics.addBody(body);
@@ -265,18 +279,21 @@ class GameWorld {
 
     private updateScene(dt: number): void {
         if (this.padPosition) {
-            let x = this.centerClip(this.padPosition.x, GameWorld.fieldWidth - GameWorld.padWidth);
-            let y = this.centerClip(this.padPosition.y, GameWorld.fieldHeight - GameWorld.padHeight);
+            this.jointBody.position.set(this.padPosition.x, this.padPosition.y, this.jointBody.position.z);
+            this.mouseConstraint.update();
+        }
 
-            this.pad1.setPosition(x, y, this.pad1.mesh.position.z);
+        // cancel gravity
+        for (let i = 0; i < this.physics.bodies.length; i++) {
+            let b = this.physics.bodies[i];
+            if (b.type === CANNON.Body.DYNAMIC) {
+                b.force.y -= b.mass * this.physics.gravity.y; // this will make the net gravity zero
+            }
         }
 
         this.physics.step(dt);
         this.ball.updateMesh();
-    }
-
-    private centerClip(val: number, len: number): number {
-        return Math.min(Math.max(val, -len / 2), len / 2);
+        this.pad1.updateMesh();
     }
 }
 
@@ -295,9 +312,9 @@ class WorldObject {
     }
 
     public updateMesh(): void {
-        if(this.mesh){
+        if (this.mesh) {
             this.mesh.position.copy(<THREE.Vector3><{}>this.body.position);
             this.mesh.quaternion.copy(<THREE.Quaternion><{}>this.body.quaternion);
-        }        
+        }
     }
 }
